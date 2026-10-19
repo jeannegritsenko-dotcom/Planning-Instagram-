@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Feed Planner</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<style>
+:root{
+  --bg:#0f0f12; --card:#1a1a20; --card2:#23232b; --text:#f4f4f6; --hint:#8d8d99;
+  --accent:#e1306c; --accent2:#7c5cff; --line:rgba(255,255,255,.08);
+  --ok:#34c759; --warn:#ffb020; --radius:14px;
+  --safe-b:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: light){
+  :root{--bg:#f4f4f7;--card:#fff;--card2:#ececf1;--text:#111116;--hint:#767684;--line:rgba(0,0,0,.08)}
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+  font:15px/1.35 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;overscroll-behavior:none}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+#app{max-width:520px;margin:0 auto;min-height:100%;padding-bottom:calc(86px + var(--safe-b))}
+
+/* header / profile */
+.profile{padding:16px 16px 8px;display:flex;align-items:center;gap:14px}
+.avatar{width:72px;height:72px;border-radius:50%;flex:none;position:relative;
+  background:conic-gradient(from 200deg,#feda75,#fa7e1e,#d62976,#962fbf,#4f5bd5,#feda75);padding:3px}
+.avatar>div{width:100%;height:100%;border-radius:50%;background:var(--card2) center/cover;border:3px solid var(--bg);
+  display:grid;place-items:center;font-size:26px;overflow:hidden}
+.pinfo{flex:1;min-width:0}
+.uname{font-weight:700;font-size:17px;background:none;border:0;color:var(--text);width:100%;padding:0;outline:none}
+.stats{display:flex;gap:16px;margin-top:6px;color:var(--hint);font-size:13px}
+.stats b{display:block;color:var(--text);font-size:16px}
+
+.tabs{display:flex;margin:10px 16px 0;background:var(--card);border-radius:12px;padding:3px}
+.tabs button{flex:1;padding:8px;border-radius:10px;color:var(--hint);font-weight:600;font-size:14px}
+.tabs button.on{background:var(--card2);color:var(--text)}
+
+/* grid */
+.toolbar{display:flex;gap:8px;padding:12px 16px 8px;overflow-x:auto;scrollbar-width:none}
+.chip{flex:none;padding:6px 12px;border-radius:999px;background:var(--card);color:var(--hint);font-size:13px;font-weight:600}
+.chip.on{background:var(--text);color:var(--bg)}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:2px;padding:0 0 0}
+.cell{position:relative;aspect-ratio:3/4;background:var(--card);overflow:hidden;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+.cell img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;-webkit-user-drag:none}
+.cell .badge{position:absolute;left:6px;bottom:6px;background:rgba(0,0,0,.6);backdrop-filter:blur(6px);
+  color:#fff;font-size:11px;font-weight:600;padding:2px 7px;border-radius:999px}
+.cell .dot{position:absolute;right:6px;top:6px;width:10px;height:10px;border-radius:50%;border:2px solid rgba(0,0,0,.45)}
+.dot.idea{background:var(--hint)} .dot.ready{background:var(--warn)} .dot.posted{background:var(--ok)}
+.cell.posted img{opacity:.55}
+.sortable-ghost{opacity:.25}
+.sortable-chosen{transform:scale(.97)}
+.add-cell{display:grid;place-items:center;aspect-ratio:3/4;background:var(--card);color:var(--hint);font-size:34px}
+
+.empty{text-align:center;color:var(--hint);padding:48px 32px}
+.empty .big{font-size:54px;margin-bottom:8px}
+.hint{color:var(--hint);font-size:12px;text-align:center;padding:10px 16px}
+
+/* calendar list */
+.list{padding:8px 16px}
+.day{margin-top:14px}
+.day h3{margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--hint)}
+.row{display:flex;gap:12px;background:var(--card);border-radius:var(--radius);padding:10px;margin-bottom:8px;align-items:center}
+.row img{width:54px;height:72px;object-fit:cover;border-radius:8px;flex:none}
+.row .t{flex:1;min-width:0}
+.row .cap{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:14px}
+.row .meta{color:var(--hint);font-size:12px;margin-top:4px}
+
+/* FAB */
+.fab{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + var(--safe-b));
+  background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-weight:700;
+  padding:14px 26px;border-radius:999px;box-shadow:0 8px 24px rgba(225,48,108,.35);display:flex;gap:8px;align-items:center;z-index:5}
+
+/* sheet */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);opacity:0;pointer-events:none;transition:.2s;z-index:10}
+.overlay.on{opacity:1;pointer-events:auto}
+.sheet{position:fixed;left:0;right:0;bottom:0;max-height:92%;overflow:auto;background:var(--card);
+  border-radius:22px 22px 0 0;padding:12px 16px calc(20px + var(--safe-b));transform:translateY(105%);
+  transition:transform .28s cubic-bezier(.2,.8,.2,1);z-index:11;max-width:520px;margin:0 auto}
+.sheet.on{transform:none}
+.grab{width:40px;height:4px;border-radius:4px;background:var(--line);margin:0 auto 12px}
+.pv{display:flex;gap:14px}
+.pv img{width:110px;aspect-ratio:3/4;object-fit:cover;border-radius:12px;flex:none}
+.pv .f{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px}
+label{display:block;font-size:12px;color:var(--hint);margin-bottom:4px;font-weight:600}
+input[type=date],input[type=time],textarea{width:100%;background:var(--card2);border:0;border-radius:10px;
+  padding:10px 12px;color:var(--text);font:inherit;outline:none;color-scheme:dark light}
+textarea{resize:none;min-height:110px;margin-top:0}
+.seg{display:flex;background:var(--card2);border-radius:10px;padding:3px}
+.seg button{flex:1;padding:7px 4px;border-radius:8px;font-size:13px;font-weight:600;color:var(--hint)}
+.seg button.on{background:var(--bg);color:var(--text)}
+.two{display:flex;gap:8px}.two>div{flex:1}
+.counter{text-align:right;font-size:11px;color:var(--hint);margin-top:4px}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+.btn{padding:12px;border-radius:12px;background:var(--card2);font-weight:600;text-align:center}
+.btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;grid-column:1/-1}
+.btn.danger{color:#ff453a}
+.toast{position:fixed;top:14px;left:50%;transform:translate(-50%,-80px);background:var(--text);color:var(--bg);
+  padding:9px 16px;border-radius:999px;font-weight:600;font-size:13px;transition:.25s;z-index:30}
+.toast.on{transform:translate(-50%,0)}
+input[type=file]{display:none}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="profile">
+    <div class="avatar"><div id="avatar" title="Нажмите, чтобы сменить аватар">📷</div></div>
+    <div class="pinfo">
+      <input class="uname" id="uname" placeholder="@username" maxlength="30" autocomplete="off" autocapitalize="off">
+      <div class="stats">
+        <span><b id="stTotal">0</b>постов</span>
+        <span><b id="stPlan">0</b>в плане</span>
+        <span><b id="stDone">0</b>опубл.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button id="tabGrid" class="on">Лента</button>
+    <button id="tabCal">Календарь</button>
+  </div>
+
+  <div id="viewGrid">
+    <div class="toolbar" id="filters"></div>
+    <div id="gridWrap"></div>
+    <div class="hint" id="gridHint">Удерживайте фото и перетаскивайте, чтобы поменять порядок</div>
+  </div>
+  <div id="viewCal" class="list" hidden></div>
+</div>
+
+<button class="fab" id="fab"><span style="font-size:20px;line-height:1">＋</span> Добавить фото</button>
+<input type="file" id="fileAdd" accept="image/*" multiple>
+<input type="file" id="fileReplace" accept="image/*">
+<input type="file" id="fileAvatar" accept="image/*">
+
+<div class="overlay" id="overlay"></div>
+<div class="sheet" id="sheet">
+  <div class="grab"></div>
+  <div class="pv">
+    <img id="eImg" alt="">
+    <div class="f">
+      <div>
+        <label>Статус</label>
+        <div class="seg" id="eStatus">
+          <button data-s="idea">Идея</button>
+          <button data-s="ready">Готово</button>
+          <button data-s="posted">Опубл.</button>
+        </div>
+      </div>
+      <div class="two">
+        <div><label>Дата</label><input type="date" id="eDate"></div>
+        <div><label>Время</label><input type="time" id="eTime"></div>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:14px">
+    <label>Подпись</label>
+    <textarea id="eCap" maxlength="2200" placeholder="Текст поста, хэштеги…"></textarea>
+    <div class="counter"><span id="eCnt">0</span> / 2200</div>
+  </div>
+  <div class="actions">
+    <button class="btn primary" id="bShare">Опубликовать в Instagram</button>
+    <button class="btn" id="bCopy">Копировать подпись</button>
+    <button class="btn" id="bReplace">Заменить фото</button>
+    <button class="btn" id="bSave">Скачать фото</button>
+    <button class="btn danger" id="bDel">Удалить</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  const tg = window.Telegram && window.Telegram.WebApp;
+  if (tg) {
+    try { tg.ready(); tg.expand(); tg.disableVerticalSwipes && tg.disableVerticalSwipes();
+      const p = tg.themeParams || {}, r = document.documentElement.style;
+      if (p.bg_color) { r.setProperty('--bg', p.bg_color); }
+      if (p.text_color) r.setProperty('--text', p.text_color);
+      if (p.hint_color) r.setProperty('--hint', p.hint_color);
+      if (p.secondary_bg_color) { r.setProperty('--card', p.secondary_bg_color); }
+      tg.setHeaderColor && tg.setHeaderColor('bg_color');
+      tg.setBackgroundColor && tg.setBackgroundColor('bg_color');
+    } catch (e) {}
+  }
+  const haptic = (t='light') => { try { tg.HapticFeedback.impactOccurred(t); } catch(e){} };
+  const $ = id => document.getElementById(id);
+
+  /* ---------- storage (IndexedDB: blobs + state) ---------- */
+  const DB = 'feed-planner', ST = 'kv', IM = 'img';
+  const open = () => new Promise((res, rej) => {
+    const r = indexedDB.open(DB, 1);
+    r.onupgradeneeded = () => { r.result.createObjectStore(ST); r.result.createObjectStore(IM); };
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+  let db;
+  const tx = (store, mode, fn) => new Promise((res, rej) => {
+    const t = db.transaction(store, mode), s = t.objectStore(store), q = fn(s);
+    t.oncomplete = () => res(q && q.result); t.onerror = () => rej(t.error);
+  });
+  const kvGet = k => tx(ST, 'readonly', s => s.get(k));
+  const kvSet = (k, v) => tx(ST, 'readwrite', s => s.put(v, k));
+  const imGet = k => tx(IM, 'readonly', s => s.get(k));
+  const imSet = (k, v) => tx(IM, 'readwrite', s => s.put(v, k));
+  const imDel = k => tx(IM, 'readwrite', s => s.delete(k));
+
+  /* ---------- state ---------- */
+  let state = { posts: [], username: '', avatar: null };
+  let filter = 'all', view = 'grid', editId = null;
+  const urls = {};               // id -> objectURL
+  const save = () => kvSet('state', state);
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+  async function loadUrl(id) {
+    if (urls[id]) return urls[id];
+    const b = await imGet(id);
+    if (b) urls[id] = URL.createObjectURL(b);
+    return urls[id];
+  }
+
+  /* resize to max 1440px on the long side, JPEG 0.88 */
+  function prepare(file) {
+    return new Promise((res, rej) => {
+      const img = new Image(), u = URL.createObjectURL(file);
+      img.onload = () => {
+        const max = 1440, k = Math.min(1, max / Math.max(img.width, img.height));
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        c.toBlob(b => { URL.revokeObjectURL(u); b ? res(b) : rej(); }, 'image/jpeg', .88);
+      };
+      img.onerror = () => { URL.revokeObjectURL(u); rej(); };
+      img.src = u;
+    });
+  }
+
+  /* ---------- helpers ---------- */
+  const MONTHS = ['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'];
+  const fmt = d => { const [y,m,dd] = d.split('-'); return `${+dd} ${MONTHS[+m-1]}`; };
+  const fmtLong = d => new Date(d + 'T00:00').toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
+  const toast = t => { const e = $('toast'); e.textContent = t; e.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove('on'), 1800); };
+  const STATUS = { idea: 'Идея', ready: 'Готово', posted: 'Опубликовано' };
+
+  /* ---------- render ---------- */
+  let sortable;
+  async function renderGrid() {
+    const wrap = $('gridWrap');
+    const list = state.posts.filter(p => filter === 'all' || p.status === filter);
+    if (!state.posts.length) {
+      wrap.innerHTML = `<div class="empty"><div class="big">🖼️</div><b>Лента пока пустая</b><br>Добавьте фото из галереи и расставьте их так, как они будут выглядеть в профиле.</div>`;
+      $('gridHint').hidden = true; if (sortable) { sortable.destroy(); sortable = null; } return;
+    }
+    $('gridHint').hidden = filter !== 'all';
+    const g = document.createElement('div'); g.className = 'grid'; g.id = 'grid';
+    for (const p of list) {
+      const c = document.createElement('div');
+      c.className = 'cell ' + p.status; c.dataset.id = p.id;
+      const src = await loadUrl(p.id);
+      c.innerHTML = `<img src="${src}" alt=""><span class="dot ${p.status}"></span>` +
+        (p.date ? `<span class="badge">${fmt(p.date)}${p.time ? ' · ' + p.time : ''}</span>` : '');
+      g.appendChild(c);
+    }
+    wrap.innerHTML = ''; wrap.appendChild(g);
+    if (sortable) sortable.destroy();
+    sortable = new Sortable(g, {
+      animation: 160, delay: 220, delayOnTouchOnly: true, touchStartThreshold: 6,
+      disabled: filter !== 'all', ghostClass: 'sortable-ghost', chosenClass: 'sortable-chosen',
+      onStart: () => haptic('medium'),
+      onEnd: () => {
+        const order = [...g.children].map(e => e.dataset.id);
+        state.posts.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+        save(); haptic('light');
+      }
+    });
+    g.addEventListener('click', e => { const c = e.target.closest('.cell'); if (c) openEditor(c.dataset.id); });
+  }
+
+  async function renderCal() {
+    const box = $('viewCal');
+    const dated = state.posts.filter(p => p.date).sort((a, b) => (a.date + (a.time||'')).localeCompare(b.date + (b.time||'')));
+    const undated = state.posts.filter(p => !p.date);
+    if (!state.posts.length) { box.innerHTML = `<div class="empty"><div class="big">🗓️</div>Здесь появятся посты с датами публикации.</div>`; return; }
+    const groups = {};
+    dated.forEach(p => (groups[p.date] = groups[p.date] || []).push(p));
+    let html = '';
+    const row = async p => `<div class="row" data-id="${p.id}"><img src="${await loadUrl(p.id)}" alt="">
+      <div class="t"><div class="cap">${esc(p.caption) || '<span style="color:var(--hint)">Без подписи</span>'}</div>
+      <div class="meta">${p.time ? p.time + ' · ' : ''}${STATUS[p.status]}</div></div><span class="dot ${p.status}" style="position:static;width:10px;height:10px;border-radius:50%;flex:none"></span></div>`;
+    for (const d of Object.keys(groups)) {
+      html += `<div class="day"><h3>${fmtLong(d)}</h3>`;
+      for (const p of groups[d]) html += await row(p);
+      html += '</div>';
+    }
+    if (undated.length) {
+      html += `<div class="day"><h3>Без даты</h3>`;
+      for (const p of undated) html += await row(p);
+      html += '</div>';
+    }
+    box.innerHTML = html;
+    box.querySelectorAll('.row').forEach(r => r.onclick = () => openEditor(r.dataset.id));
+  }
+  const esc = s => (s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  function renderFilters() {
+    const f = [['all','Все'],['idea','Идеи'],['ready','Готовы'],['posted','Опубликованы']];
+    $('filters').innerHTML = f.map(([k,l]) => `<button class="chip ${filter===k?'on':''}" data-f="${k}">${l}</button>`).join('');
+    $('filters').querySelectorAll('.chip').forEach(b => b.onclick = () => { filter = b.dataset.f; renderFilters(); renderGrid(); });
+  }
+
+  function renderStats() {
+    $('stTotal').textContent = state.posts.length;
+    $('stPlan').textContent = state.posts.filter(p => p.status !== 'posted').length;
+    $('stDone').textContent = state.posts.filter(p => p.status === 'posted').length;
+  }
+
+  async function renderAll() {
+    renderStats();
+    if (view === 'grid') await renderGrid(); else await renderCal();
+  }
+
+  /* ---------- tabs ---------- */
+  function setView(v) {
+    view = v;
+    $('tabGrid').classList.toggle('on', v === 'grid'); $('tabCal').classList.toggle('on', v === 'cal');
+    $('viewGrid').hidden = v !== 'grid'; $('viewCal').hidden = v !== 'cal';
+    renderAll();
+  }
+  $('tabGrid').onclick = () => setView('grid'); $('tabCal').onclick = () => setView('cal');
+
+  /* ---------- add photos ---------- */
+  $('fab').onclick = () => $('fileAdd').click();
+  $('fileAdd').onchange = async e => {
+    const files = [...e.target.files]; e.target.value = '';
+    if (!files.length) return;
+    toast('Добавляю…');
+    let n = 0;
+    for (const f of files) {
+      try {
+        const blob = await prepare(f), id = uid();
+        await imSet(id, blob);
+        state.posts.unshift({ id, caption: '', date: '', time: '', status: 'idea' });
+        n++;
+      } catch (_) {}
+    }
+    await save(); filter = 'all'; renderFilters(); await renderAll();
+    haptic('medium'); toast(n ? `Добавлено: ${n}` : 'Не удалось добавить фото');
+    if (n === 1 && files.length === 1) openEditor(state.posts[0].id);
+  };
+
+  /* ---------- editor ---------- */
+  const cur = () => state.posts.find(p => p.id === editId);
+  async function openEditor(id) {
+    editId = id; const p = cur(); if (!p) return;
+    $('eImg').src = await loadUrl(id);
+    $('eCap').value = p.caption; $('eCnt').textContent = p.caption.length;
+    $('eDate').value = p.date; $('eTime').value = p.time;
+    setSeg(p.status);
+    $('overlay').classList.add('on'); $('sheet').classList.add('on');
+    if (tg && tg.BackButton) { tg.BackButton.show(); tg.BackButton.onClick(closeEditor); }
+  }
+  function closeEditor() {
+    $('overlay').classList.remove('on'); $('sheet').classList.remove('on'); editId = null;
+    if (tg && tg.BackButton) { tg.BackButton.hide(); tg.BackButton.offClick(closeEditor); }
+    renderAll();
+  }
+  $('overlay').onclick = closeEditor;
+  function setSeg(s) { $('eStatus').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.s === s)); }
+  $('eStatus').onclick = e => { const b = e.target.closest('button'); if (!b || !cur()) return; cur().status = b.dataset.s; setSeg(b.dataset.s); save(); haptic(); };
+  $('eCap').oninput = e => { cur().caption = e.target.value; $('eCnt').textContent = e.target.value.length; save(); };
+  $('eDate').onchange = e => { cur().date = e.target.value; save(); };
+  $('eTime').onchange = e => { cur().time = e.target.value; save(); };
+
+  $('bCopy').onclick = async () => {
+    const t = cur().caption;
+    if (!t) return toast('Подпись пустая');
+    try { await navigator.clipboard.writeText(t); }
+    catch (_) { const a = $('eCap'); a.select(); document.execCommand('copy'); }
+    toast('Подпись скопирована');
+  };
+  $('bReplace').onclick = () => $('fileReplace').click();
+  $('fileReplace').onchange = async e => {
+    const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+    try {
+      const blob = await prepare(f); await imSet(editId, blob);
+      if (urls[editId]) URL.revokeObjectURL(urls[editId]); delete urls[editId];
+      $('eImg').src = await loadUrl(editId); toast('Фото заменено');
+    } catch (_) { toast('Не удалось заменить'); }
+  };
+  async function getFile() {
+    const b = await imGet(editId); return new File([b], `post-${editId}.jpg`, { type: 'image/jpeg' });
+  }
+  $('bShare').onclick = async () => {
+    const p = cur(), file = await getFile();
+    if (p.caption) { try { await navigator.clipboard.writeText(p.caption); } catch (_) {} }
+    try {
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], text: p.caption || undefined });
+        p.status = 'posted'; setSeg('posted'); save(); return;
+      }
+    } catch (e) { if (e.name === 'AbortError') return; }
+    // fallback: download photo + open Instagram
+    downloadFile(file);
+    toast(p.caption ? 'Фото скачано, подпись скопирована' : 'Фото скачано');
+    setTimeout(() => { const u = 'https://www.instagram.com/'; tg && tg.openLink ? tg.openLink(u) : window.open(u, '_blank'); }, 900);
+  };
+  function downloadFile(file) {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = file.name;
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+  $('bSave').onclick = async () => { downloadFile(await getFile()); toast('Фото сохранено'); };
+  $('bDel').onclick = async () => {
+    const go = async () => {
+      const id = editId;
+      state.posts = state.posts.filter(p => p.id !== id);
+      await imDel(id); if (urls[id]) { URL.revokeObjectURL(urls[id]); delete urls[id]; }
+      await save(); closeEditor(); haptic('medium'); toast('Удалено');
+    };
+    if (tg && tg.showConfirm) tg.showConfirm('Удалить этот пост?', ok => ok && go());
+    else if (confirm('Удалить этот пост?')) go();
+  };
+
+  /* ---------- profile ---------- */
+  $('uname').onchange = e => { state.username = e.target.value.trim(); save(); };
+  $('avatar').onclick = () => $('fileAvatar').click();
+  $('fileAvatar').onchange = async e => {
+    const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+    try { const b = await prepare(f); await imSet('__avatar', b); delete urls.__avatar; state.avatar = true; await save(); showAvatar(); } catch (_) {}
+  };
+  async function showAvatar() {
+    const a = $('avatar');
+    if (state.avatar) { const u = await loadUrl('__avatar'); a.style.backgroundImage = `url(${u})`; a.textContent = ''; }
+  }
+
+  /* ---------- init ---------- */
+  (async () => {
+    try {
+      db = await open();
+      const s = await kvGet('state'); if (s) state = Object.assign(state, s);
+    } catch (e) { toast('Хранилище недоступно'); }
+    if (!state.username && tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.username)
+      state.username = '@' + tg.initDataUnsafe.user.username;
+    $('uname').value = state.username;
+    showAvatar(); renderFilters(); renderAll();
+  })();
+})();
+</script>
+</body>
+</html>
